@@ -5,7 +5,6 @@ Lending Club Dataset (2007-2018 Q4)
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
 import joblib
 import os
 
@@ -101,7 +100,7 @@ print("Step 6: Parsing and cleaning columns...")
 # term: " 36 months" -> 36
 df["term"] = df["term"].str.strip().str.replace(" months", "", regex=False).astype(float)
 
-# int_rate: "13.99" (already numeric in this dataset, but ensure)
+# int_rate: ensure numeric
 df["int_rate"] = pd.to_numeric(df["int_rate"], errors="coerce")
 
 # emp_length: map to numeric
@@ -113,7 +112,6 @@ emp_map = {
 df["emp_length"] = df["emp_length"].map(emp_map)
 
 # earliest_cr_line: convert to credit history length in months
-# Use issue_d as reference — but we dropped it. Use a fixed reference date instead.
 reference_date = pd.Timestamp("2019-01-01")  # just after the last data point
 df["earliest_cr_line"] = pd.to_datetime(df["earliest_cr_line"], format="%b-%Y", errors="coerce")
 df["credit_history_months"] = (
@@ -124,8 +122,7 @@ df.drop(columns=["earliest_cr_line"], inplace=True)
 # revol_util: should be numeric, force conversion
 df["revol_util"] = pd.to_numeric(df["revol_util"], errors="coerce")
 
-# issue_d: we need it for time-based split before dropping
-# We already dropped it in leakage... let's reload just that column
+# Reload issue_d for the time-based split
 print("  Reloading issue_d for time-based split...")
 issue_dates = pd.read_csv("accepted_2007_to_2018Q4.csv", usecols=["issue_d"], low_memory=False)
 df["issue_d"] = issue_dates.loc[df.index, "issue_d"]

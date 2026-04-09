@@ -3,7 +3,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 from utils import COLORS, plotly_layout, section_header, info_card
 
 st.html(section_header("Dataset Insights",

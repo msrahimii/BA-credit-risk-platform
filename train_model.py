@@ -15,9 +15,8 @@ import joblib
 import json
 import time
 from sklearn.metrics import (
-    roc_auc_score, precision_score, recall_score, f1_score,
-    confusion_matrix, classification_report, precision_recall_curve,
-    roc_curve,
+    roc_auc_score, confusion_matrix, classification_report,
+    precision_recall_curve,
 )
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)

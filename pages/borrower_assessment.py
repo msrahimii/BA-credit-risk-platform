@@ -2,13 +2,10 @@
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import xgboost as xgb
-import shap
 import joblib
 import json
-import plotly.graph_objects as go
-from utils import COLORS, gauge_chart, plotly_layout, section_header, info_card, status_badge
+from utils import COLORS, gauge_chart, section_header, info_card, status_badge
 
 
 @st.cache_resource

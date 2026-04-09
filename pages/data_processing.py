@@ -2,7 +2,6 @@
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import json
 import plotly.graph_objects as go
 from utils import COLORS, section_header, info_card, plotly_layout, hex_to_rgba
@@ -440,7 +439,7 @@ fig.add_trace(go.Scatter(
     name="Training Data",
 ))
 
-# Find the approximate split point index
+# Find the split point index
 split_idx = None
 for i, ym in enumerate(time_stats["year_month"]):
     if "2017" in str(ym):

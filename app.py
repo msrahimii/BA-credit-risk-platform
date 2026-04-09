@@ -1,7 +1,7 @@
 """Credit Risk Platform - Navigation Entry Point"""
 
 import streamlit as st
-from utils import apply_theme, COLORS
+from utils import apply_theme
 
 st.set_page_config(
     page_title="Credit Risk Platform",

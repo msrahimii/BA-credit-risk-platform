@@ -1,8 +1,6 @@
 """Limitations Page - Honest assessment of project constraints and tradeoffs."""
 
 import streamlit as st
-import pandas as pd
-import numpy as np
 import json
 import plotly.graph_objects as go
 from utils import COLORS, section_header, info_card, plotly_layout, hex_to_rgba

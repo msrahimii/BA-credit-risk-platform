@@ -1,7 +1,6 @@
 """Methodology Page - Full modeling approach walkthrough with visualizations."""
 
 import streamlit as st
-import pandas as pd
 import numpy as np
 import json
 import plotly.graph_objects as go

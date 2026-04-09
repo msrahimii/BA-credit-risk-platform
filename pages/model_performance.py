@@ -12,17 +12,17 @@ from utils import COLORS, metric_card_html, plotly_layout, section_header, info_
 
 @st.cache_resource
 def load_all():
-    model = xgb.XGBClassifier()
-    model.load_model("artifacts/xgb_credit_risk_model.json")
+    loaded_model = xgb.XGBClassifier()
+    loaded_model.load_model("artifacts/xgb_credit_risk_model.json")
     with open("artifacts/model_metadata.json") as f:
         metadata = json.load(f)
     X_test = pd.read_csv("data/X_test.csv")
     y_test = pd.read_csv("data/y_test.csv").squeeze()
-    y_prob = model.predict_proba(X_test)[:, 1]
-    return model, metadata, X_test, y_test, y_prob
+    y_prob = loaded_model.predict_proba(X_test)[:, 1]
+    return metadata, X_test, y_test, y_prob
 
 
-model, metadata, X_test, y_test, y_prob = load_all()
+metadata, X_test, y_test, y_prob = load_all()
 
 st.html(section_header("Model Performance",
                         "XGBoost model evaluation on held-out test data (2017-2018)"))
@@ -165,7 +165,6 @@ with tab2:
                 colorscale=[[0, COLORS["bg_card"]], [1, COLORS["accent"]]],
                 showscale=False,
             ))
-            accent = COLORS["success"] if name == "Borrower" else COLORS["warning"]
             fig.update_layout(title=f"{name} Page (threshold={threshold:.4f})")
             fig = plotly_layout(fig, height=350)
             st.plotly_chart(fig, use_container_width=True)
