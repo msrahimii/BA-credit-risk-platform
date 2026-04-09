@@ -138,18 +138,20 @@ print(f"  Columns after parsing: {df.shape[1]}")
 # ─────────────────────────────────────────────
 print("Step 7: Handling missing values...")
 
-# Drop columns with >50% missing
-missing_pct = df.isnull().mean()
-high_missing = missing_pct[missing_pct > 0.50].index.tolist()
-# Don't drop issue_d or target
-high_missing = [c for c in high_missing if c not in ["issue_d", "target"]]
-print(f"  Dropping {len(high_missing)} columns with >50% missing: {high_missing}")
-df.drop(columns=high_missing, inplace=True)
-
-# "Months since" columns: missing means "never happened" -> fill with -1
+# FIRST: impute "months since" columns BEFORE checking missing %.
+# Missing here means "never happened" (e.g. never delinquent) — that IS the signal.
 mths_since_cols = [c for c in df.columns if "mths_since" in c or "mo_sin" in c]
 for col in mths_since_cols:
     df[col] = df[col].fillna(-1)
+print(f"  Imputed {len(mths_since_cols)} 'months since' columns with -1")
+
+# Now drop columns with >70% missing (raised from 50% to keep more signal)
+missing_pct = df.isnull().mean()
+high_missing = missing_pct[missing_pct > 0.70].index.tolist()
+# Don't drop issue_d or target
+high_missing = [c for c in high_missing if c not in ["issue_d", "target"]]
+print(f"  Dropping {len(high_missing)} columns with >70% missing: {high_missing}")
+df.drop(columns=high_missing, inplace=True)
 
 # Numeric columns: median imputation
 numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -218,10 +220,20 @@ print("Step 9: Feature selection...")
 
 feature_cols = [c for c in df.columns if c not in ["target", "issue_d"]]
 
-# Remove highly correlated pairs (>0.95)
+# Protect important features from being dropped by correlation filter
+protected_features = {"sub_grade", "int_rate", "fico_range_low", "loan_amnt", "dti"}
+
+# Remove highly correlated pairs (>0.95), but keep protected features
 corr_matrix = df[feature_cols].corr().abs()
 upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-high_corr_cols = [col for col in upper_tri.columns if any(upper_tri[col] > 0.95)]
+high_corr_cols = set()
+for col in upper_tri.columns:
+    if col in protected_features:
+        continue
+    if any(upper_tri[col] > 0.95):
+        high_corr_cols.add(col)
+
+high_corr_cols = list(high_corr_cols)
 print(f"  Dropping {len(high_corr_cols)} highly correlated columns: {high_corr_cols}")
 df.drop(columns=high_corr_cols, inplace=True)
 

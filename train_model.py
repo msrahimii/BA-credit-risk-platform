@@ -50,14 +50,14 @@ baseline_params = {
     "eval_metric": "auc",
     "scale_pos_weight": scale_ratio,
     "max_depth": 6,
-    "learning_rate": 0.1,
-    "n_estimators": 500,
+    "learning_rate": 0.05,
+    "n_estimators": 1500,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
     "min_child_weight": 5,
     "tree_method": "hist",
     "random_state": 42,
-    "early_stopping_rounds": 30,
+    "early_stopping_rounds": 50,
 }
 
 baseline_model = xgb.XGBClassifier(**baseline_params)
@@ -99,7 +99,7 @@ def objective(trial):
         "seed": 42,
         # Tuned params — ranges centered around known-good values
         "max_depth": trial.suggest_int("max_depth", 4, 8),
-        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.15, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", 0.02, 0.1, log=True),
         "min_child_weight": trial.suggest_int("min_child_weight", 3, 10),
         "subsample": trial.suggest_float("subsample", 0.6, 0.9),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 0.9),
@@ -150,8 +150,8 @@ best_params = {
 # Train with early stopping to find optimal n_estimators
 final_model = xgb.XGBClassifier(
     **best_params,
-    n_estimators=1000,
-    early_stopping_rounds=50,
+    n_estimators=2000,
+    early_stopping_rounds=80,
 )
 final_model.fit(
     X_train, y_train,
