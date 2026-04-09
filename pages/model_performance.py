@@ -1,5 +1,7 @@
 """Model Performance Page - Evaluation metrics and feature importance."""
 
+from pathlib import Path
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,19 +12,100 @@ from sklearn.metrics import roc_curve, precision_recall_curve, roc_auc_score
 from utils import COLORS, metric_card_html, plotly_layout, section_header, info_card
 
 
+def downsample_curve(x_values, y_values, max_points=400):
+    """Keep curve payloads compact while preserving the overall shape."""
+    if len(x_values) <= max_points:
+        return x_values.tolist(), y_values.tolist()
+
+    sample_idx = np.linspace(0, len(x_values) - 1, max_points, dtype=int)
+    sample_idx = np.unique(np.concatenate(([0], sample_idx, [len(x_values) - 1])))
+    return x_values[sample_idx].tolist(), y_values[sample_idx].tolist()
+
+
+def build_performance_payload(y_true, y_score, metadata):
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    precision, recall, thresholds = precision_recall_curve(y_true, y_score)
+
+    roc_fpr, roc_tpr = downsample_curve(fpr, tpr)
+    pr_recall, pr_precision = downsample_curve(recall, precision)
+
+    threshold_points = {}
+    for key, threshold in [
+        ("borrower", metadata["borrower_threshold"]),
+        ("bank", metadata["bank_threshold"]),
+    ]:
+        idx = int(np.argmin(np.abs(thresholds - threshold)))
+        threshold_points[key] = {
+            "threshold": float(threshold),
+            "precision": float(precision[idx]),
+            "recall": float(recall[idx]),
+        }
+
+    confusion_matrices = {}
+    for key, threshold in [
+        ("borrower", metadata["borrower_threshold"]),
+        ("bank", metadata["bank_threshold"]),
+    ]:
+        y_pred = (y_score >= threshold).astype(int)
+        tn = int(((y_pred == 0) & (y_true == 0)).sum())
+        fp = int(((y_pred == 1) & (y_true == 0)).sum())
+        fn = int(((y_pred == 0) & (y_true == 1)).sum())
+        tp = int(((y_pred == 1) & (y_true == 1)).sum())
+
+        accuracy = (tp + tn) / (tp + tn + fp + fn)
+        prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+
+        confusion_matrices[key] = {
+            "tn": tn,
+            "fp": fp,
+            "fn": fn,
+            "tp": tp,
+            "accuracy": float(accuracy),
+            "precision": float(prec),
+            "recall": float(rec),
+            "f1": float(f1),
+        }
+
+    return {
+        "test_samples": int(len(y_true)),
+        "test_default_rate": float(y_true.mean()),
+        "auc": float(roc_auc_score(y_true, y_score)),
+        "roc_curve": {
+            "fpr": roc_fpr,
+            "tpr": roc_tpr,
+        },
+        "pr_curve": {
+            "recall": pr_recall,
+            "precision": pr_precision,
+        },
+        "threshold_points": threshold_points,
+        "confusion_matrices": confusion_matrices,
+    }
+
+
 @st.cache_resource
 def load_all():
     loaded_model = xgb.XGBClassifier()
-    loaded_model.load_model("artifacts/xgb_credit_risk_model.json")
     with open("artifacts/model_metadata.json") as f:
         metadata = json.load(f)
+
+    perf_path = Path("artifacts/model_performance_data.json")
+    if perf_path.exists():
+        with perf_path.open() as f:
+            performance = json.load(f)
+        return metadata, performance
+
+    loaded_model.load_model("artifacts/xgb_credit_risk_model.json")
     X_test = pd.read_csv("data/X_test.csv")
     y_test = pd.read_csv("data/y_test.csv").squeeze()
     y_prob = loaded_model.predict_proba(X_test)[:, 1]
-    return metadata, X_test, y_test, y_prob
+    performance = build_performance_payload(y_test, y_prob, metadata)
+    return metadata, performance
 
 
-metadata, X_test, y_test, y_prob = load_all()
+metadata, performance = load_all()
 
 st.html(section_header("Model Performance",
                         "XGBoost model evaluation on held-out test data (2017-2018)"))
@@ -40,8 +123,8 @@ with cols[2]:
     st.html(metric_card_html("Bank Recall", f"{bankm['recall']:.1%}",
                               delta=f"Precision: {bankm['precision']:.1%}"))
 with cols[3]:
-    st.html(metric_card_html("Test Samples", f"{len(y_test):,}",
-                              delta=f"{y_test.mean():.1%} default rate"))
+    st.html(metric_card_html("Test Samples", f"{performance['test_samples']:,}",
+                              delta=f"{performance['test_default_rate']:.1%} default rate"))
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -53,13 +136,11 @@ with tab1:
 
     with col1:
         # ROC Curve
-        fpr, tpr, _ = roc_curve(y_test, y_prob)
-        auc_val = roc_auc_score(y_test, y_prob)
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=fpr, y=tpr,
+            x=performance["roc_curve"]["fpr"], y=performance["roc_curve"]["tpr"],
             mode="lines",
-            name=f"XGBoost (AUC = {auc_val:.4f})",
+            name=f"XGBoost (AUC = {performance['auc']:.4f})",
             line=dict(color=COLORS["chart_purple"], width=2.5),
             fill="tozeroy",
             fillcolor="rgba(129, 140, 248, 0.1)",
@@ -81,10 +162,9 @@ with tab1:
 
     with col2:
         # Precision-Recall Curve
-        precision, recall, thresholds = precision_recall_curve(y_test, y_prob)
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=recall, y=precision,
+            x=performance["pr_curve"]["recall"], y=performance["pr_curve"]["precision"],
             mode="lines",
             name="Precision-Recall",
             line=dict(color=COLORS["chart_blue"], width=2.5),
@@ -96,9 +176,9 @@ with tab1:
             ("Borrower", metadata["borrower_threshold"], COLORS["success"], "circle"),
             ("Bank", metadata["bank_threshold"], COLORS["warning"], "diamond"),
         ]:
-            idx = np.argmin(np.abs(thresholds - th))
+            point = performance["threshold_points"][name.lower()]
             fig.add_trace(go.Scatter(
-                x=[recall[idx]], y=[precision[idx]],
+                x=[point["recall"]], y=[point["precision"]],
                 mode="markers+text",
                 name=f"{name} Threshold ({th:.2f})",
                 marker=dict(color=color, size=14, symbol=symbol,
@@ -146,11 +226,11 @@ with tab2:
         (col2, "Bank", metadata["bank_threshold"]),
     ]:
         with col:
-            y_pred = (y_prob >= threshold).astype(int)
-            tn = ((y_pred == 0) & (y_test == 0)).sum()
-            fp = ((y_pred == 1) & (y_test == 0)).sum()
-            fn = ((y_pred == 0) & (y_test == 1)).sum()
-            tp = ((y_pred == 1) & (y_test == 1)).sum()
+            cm_data = performance["confusion_matrices"][name.lower()]
+            tn = cm_data["tn"]
+            fp = cm_data["fp"]
+            fn = cm_data["fn"]
+            tp = cm_data["tp"]
 
             cm = [[tn, fp], [fn, tp]]
             labels = [["True Neg", "False Pos"], ["False Neg", "True Pos"]]
@@ -169,10 +249,10 @@ with tab2:
             fig = plotly_layout(fig, height=350)
             st.plotly_chart(fig, use_container_width=True)
 
-            accuracy = (tp + tn) / (tp + tn + fp + fn)
-            prec = tp / (tp + fp) if (tp + fp) > 0 else 0
-            rec = tp / (tp + fn) if (tp + fn) > 0 else 0
-            f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0
+            accuracy = cm_data["accuracy"]
+            prec = cm_data["precision"]
+            rec = cm_data["recall"]
+            f1 = cm_data["f1"]
 
             st.markdown(
                 f"""<div style="display:flex;gap:1rem;margin-top:0.5rem;">

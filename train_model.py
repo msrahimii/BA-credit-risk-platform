@@ -16,10 +16,69 @@ import json
 import time
 from sklearn.metrics import (
     roc_auc_score, confusion_matrix, classification_report,
-    precision_recall_curve,
+    precision_recall_curve, roc_curve,
 )
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+
+def downsample_curve(x_values, y_values, max_points=400):
+    """Keep visualization artifacts compact while preserving curve shape."""
+    if len(x_values) <= max_points:
+        return x_values.tolist(), y_values.tolist()
+
+    sample_idx = np.linspace(0, len(x_values) - 1, max_points, dtype=int)
+    sample_idx = np.unique(np.concatenate(([0], sample_idx, [len(x_values) - 1])))
+    return x_values[sample_idx].tolist(), y_values[sample_idx].tolist()
+
+
+def build_performance_payload(y_true, y_score, metadata):
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    precision, recall, thresholds = precision_recall_curve(y_true, y_score)
+
+    roc_fpr, roc_tpr = downsample_curve(fpr, tpr)
+    pr_recall, pr_precision = downsample_curve(recall, precision)
+
+    threshold_points = {}
+    confusion_matrices = {}
+
+    for key, threshold in [
+        ("borrower", metadata["borrower_threshold"]),
+        ("bank", metadata["bank_threshold"]),
+    ]:
+        idx = int(np.argmin(np.abs(thresholds - threshold)))
+        threshold_points[key] = {
+            "threshold": float(threshold),
+            "precision": float(precision[idx]),
+            "recall": float(recall[idx]),
+        }
+
+        y_pred = (y_score >= threshold).astype(int)
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+        prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+
+        confusion_matrices[key] = {
+            "tn": int(tn),
+            "fp": int(fp),
+            "fn": int(fn),
+            "tp": int(tp),
+            "accuracy": float((tp + tn) / (tp + tn + fp + fn)),
+            "precision": float(prec),
+            "recall": float(rec),
+            "f1": float(f1),
+        }
+
+    return {
+        "test_samples": int(len(y_true)),
+        "test_default_rate": float(y_true.mean()),
+        "auc": float(roc_auc_score(y_true, y_score)),
+        "roc_curve": {"fpr": roc_fpr, "tpr": roc_tpr},
+        "pr_curve": {"recall": pr_recall, "precision": pr_precision},
+        "threshold_points": threshold_points,
+        "confusion_matrices": confusion_matrices,
+    }
 
 # ─────────────────────────────────────────────
 # LOAD DATA
@@ -269,8 +328,13 @@ model_metadata = {
 with open("artifacts/model_metadata.json", "w") as f:
     json.dump(model_metadata, f, indent=2)
 
+performance_payload = build_performance_payload(y_test, y_prob, model_metadata)
+with open("artifacts/model_performance_data.json", "w") as f:
+    json.dump(performance_payload, f, indent=2)
+
 print("\nSaved:")
 print("  artifacts/xgb_credit_risk_model.json  (XGBoost model)")
 print("  artifacts/shap_explainer.pkl          (SHAP explainer)")
 print("  artifacts/model_metadata.json         (thresholds & metrics)")
+print("  artifacts/model_performance_data.json (cached evaluation curves & matrices)")
 print("\nDone!")
