@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-# Large data files
+# Large raw data files (keep data/viz/ and artifacts/ for deployment)
 accepted_2007_to_2018Q4.csv
-data/
+data/X_train.csv
+data/X_test.csv
+data/y_train.csv
+data/y_test.csv
